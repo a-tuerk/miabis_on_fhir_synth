@@ -1,0 +1,12 @@
+faker>=24.0.0
+
+# Optional: fhir.resources for FHIR model validation.
+# NOTE: The MIABIS on FHIR IG is based on FHIR R4.
+#   fhir.resources v6.x = FHIR R4 (requires Pydantic v1)
+#   fhir.resources v7.x = FHIR R4B (requires Pydantic v1)
+#   fhir.resources v8.x = FHIR R5 (requires Pydantic v2)
+# With Pydantic v2 only v8+ works, but it validates against R5 not R4.
+# For authoritative R4 validation use the HL7 FHIR validator:
+#   https://validator.fhir.org/
+#
+# fhir.resources>=8.0.0  # uncomment to enable optional schema check
