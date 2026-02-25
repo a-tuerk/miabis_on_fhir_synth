@@ -1,0 +1,14 @@
+# FHIR validator binary
+validator_cli.jar
+
+# Locally compiled IG (external repo, rebuilt from source)
+miabis-on-fhir-ig/
+
+# Generated artifacts
+miabis_bundle.json
+validation_report*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
