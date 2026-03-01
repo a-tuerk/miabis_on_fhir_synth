@@ -237,7 +237,7 @@ ICD10_CODES = [
     ("E11",   "Type 2 diabetes mellitus"),
     ("I21",   "Acute myocardial infarction"),
     ("J45",   "Asthma"),
-    ("K50",   "Crohn disease"),
+    ("K50",   "Crohn disease [regional enteritis]"),
     ("G20",   "Parkinson disease"),
     ("G35",   "Multiple sclerosis"),
     ("F20",   "Schizophrenia"),
