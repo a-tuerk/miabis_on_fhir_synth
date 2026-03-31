@@ -147,6 +147,8 @@ java -jar validator_cli.jar miabis_bundle.json \
   -output validation_report.json
 ```
 
+> **Note:** If you validate at [validator.fhir.org](https://validator.fhir.org) without supplying the IG package, all MIABIS extension URLs will fail with *unknown extension* errors. The canonical base `https://fhir.bbmri-eric.eu` is not backed by a live FHIR endpoint, so the validator cannot auto-resolve the definitions. Always provide the IG package (via the `-ig` flag or the validator.fhir.org *IGS / Package* input) to get meaningful results.
+
 ### Validation results
 
 | Severity | Count | Notes |
