@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Smoke test — default parameters
+        run: python generate_miabis_data.py --seed 42 --output /tmp/bundle_default.json
+
+      - name: Smoke test — single collection
+        run: python generate_miabis_data.py --seed 42 --donors 1 --samples-per-donor 1 --collections 1 --output /tmp/bundle_minimal.json
+
+      - name: Smoke test — large bundle
+        run: python generate_miabis_data.py --seed 42 --donors 50 --collections 5 --samples-per-donor 5 --output /tmp/bundle_large.json
