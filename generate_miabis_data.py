@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: EUPL-1.2
+# Licensed under the European Union Public Licence v. 1.2
+# See LICENSE file in the project root for full licence text.
 """
 Synthetic MIABIS-on-FHIR data generator.
 
