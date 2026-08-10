@@ -19,7 +19,8 @@ Each bundle run produces one biobank hierarchy plus configurable numbers of dono
 | `Organization` | CollectionOrganization | `miabis-collection-organization` |
 | `Group` | Collection | `miabis-collection` |
 | `Patient` | SampleDonor | `miabis-sample-donor` |
-| `Condition` | Condition (diagnosis) | `miabis-condition` |
+| `Condition` | Condition (patient-level diagnosis) | `miabis-condition` |
+| `Observation` | Diagnosis linked to a sample | `miabis-observation` |
 | `Specimen` | Sample | `miabis-sample` |
 
 Relationships:
@@ -31,7 +32,24 @@ CollectionOrganization ← Collection.managingEntity
 Collection ←── (MemberEntity ext) ── Specimen
 Patient    ←── Condition.subject
 Patient    ←── Specimen.subject
+Patient    ←── Observation.subject
+Specimen   ←── Observation.specimen
 ```
+
+### Where diagnoses live
+
+The IG puts these in two different places, and the distinction matters to anyone
+querying the data:
+
+- **`Observation`** carries a diagnosis **linked to a sample** — ICD-10 in
+  `value[x]`, the sample in `specimen`. This is what a sample locator searches.
+- **`Condition`** carries a **patient-level** diagnosis, one the biobank holds
+  no sample for. `Condition.code` is `0..1` and some producers leave it empty.
+
+Each generated donor gets both: one Condition, and one or two Observations per
+sample. The codes never overlap for a given donor, so a consumer that reads only
+one of the two placements produces visibly wrong counts rather than accidentally
+right ones.
 
 ---
 
@@ -74,7 +92,9 @@ python generate_miabis_data.py --donors 100 --collections 5 --country CZ --seed 
 python generate_miabis_data.py --output test_bundle.json --no-validate
 ```
 
-The script prints a summary on completion:
+The script prints a summary on completion. Sample and Observation counts are
+randomised per donor, so totals vary between runs unless `--seed` is given; this
+is `--seed 42` with otherwise default parameters:
 
 ```
 Generating MIABIS-on-FHIR synthetic data …
@@ -82,12 +102,13 @@ Validating …
   [ok] structural validation passed
 
 Written: miabis_bundle.json
-Total bundle entries: 50
+Total bundle entries: 62
   Condition                   10
   Group                        2
+  Observation                 22
   Organization                 4
   Patient                     10
-  Specimen                    24
+  Specimen                    14
 ```
 
 ---

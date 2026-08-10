@@ -43,6 +43,9 @@ CS  = f"{CANONICAL}/CodeSystem"            # CodeSystem base
 
 # ── Standard external code systems ────────────────────────────────────────────
 ICD10       = "http://hl7.org/fhir/sid/icd-10"
+LOINC       = "http://loinc.org"
+# LOINC code the MIABIS reference implementation uses on the diagnosis Observation
+DIAGNOSIS_LOINC = "52797-8"
 ADMIN_GENDER = "http://hl7.org/fhir/administrative-gender"
 # FHIR R5 extension for Group.member.entity (used in FHIR R4 via cross-version ext)
 EXT_MEMBER_ENTITY = "http://hl7.org/fhir/5.0/StructureDefinition/extension-Group.member.entity"
@@ -55,6 +58,7 @@ PROFILE = {
     "sample":         f"{SD}/miabis-sample",
     "donor":          f"{SD}/miabis-sample-donor",
     "condition":      f"{SD}/miabis-condition",
+    "observation":    f"{SD}/miabis-observation",
 }
 
 # ── Extension canonical URLs ───────────────────────────────────────────────────
@@ -623,7 +627,10 @@ def make_donor(biobank_id: str) -> tuple[dict, str]:
     return resource, rid
 
 
-def make_condition(donor_id: str) -> tuple[dict, str, str]:
+def make_condition(
+    donor_id: str,
+    diagnosis: tuple[str, str] | None = None,
+) -> tuple[dict, str, str]:
     """
     MIABIS Condition → FHIR Condition
     Profile: https://fhir.bbmri-eric.eu/StructureDefinition/miabis-condition
@@ -631,11 +638,12 @@ def make_condition(donor_id: str) -> tuple[dict, str, str]:
     Required: subject → Donor
     Optional: identifier, code from DiagnosisVS (ICD-10)
 
-    Note: This is for PATIENT-level diagnoses only.
-    Sample-linked diagnoses should use Observation (not generated here).
+    Note: This is for PATIENT-level diagnoses only — a diagnosis the biobank
+    holds no sample for. Diagnoses linked to a sample belong on Observation,
+    see make_observation.
     """
     rid             = new_id()
-    icd_code, label = random.choice(ICD10_CODES)
+    icd_code, label = diagnosis if diagnosis is not None else random.choice(ICD10_CODES)
 
     resource: dict = {
         "resourceType": "Condition",
@@ -732,6 +740,46 @@ def make_sample(
     return resource, rid
 
 
+def make_observation(
+    donor_id:  str,
+    sample_id: str,
+    diagnosis: tuple[str, str],
+) -> tuple[dict, str]:
+    """
+    MIABIS Observation → FHIR Observation
+    Profile: https://fhir.bbmri-eric.eu/StructureDefinition/miabis-observation
+
+    Required: status, code, subject → Donor, specimen → Sample,
+              value[x] as CodeableConcept carrying the ICD-10 coding
+    Optional: identifier, effectiveDateTime (when the diagnosis was made)
+
+    This is the diagnosis LINKED TO A SAMPLE — the placement the IG specifies
+    for it, and the one consumers query. Patient-level diagnoses with no sample
+    belong on Condition, see make_condition.
+    """
+    rid             = new_id()
+    icd_code, label = diagnosis
+
+    resource: dict = {
+        "resourceType": "Observation",
+        "id":   rid,
+        "meta": {"profile": [PROFILE["observation"]]},
+        "text": narrative("Observation", label),
+        "identifier": [
+            identifier("http://www.bbmri-eric.eu/observation",
+                       fake.numerify("OBS-########")),
+        ],
+        "status":   "final",
+        "code":     codeable_concept(LOINC, DIAGNOSIS_LOINC),
+        "subject":  ref("Patient", donor_id),
+        "specimen": ref("Specimen", sample_id),
+        "effectiveDateTime":    random_past_date(0.5, 8),
+        "valueCodeableConcept": codeable_concept(ICD10, icd_code, label),
+    }
+
+    return resource, rid
+
+
 # ── Bundle assembly ─────────────────────────────────────────────────────────────
 
 def generate_bundle(
@@ -746,7 +794,14 @@ def generate_bundle(
       JuristicPerson → Biobank → CollectionOrganization → Collection (Group)
                                                                 ↑
       Donor → Condition          Sample (Specimen) ────────────┘
-                   ↓subject ←── ↑subject
+                   ↓subject ←── ↑subject ↑specimen
+                               Observation
+
+    Each donor gets one Condition — a patient-level diagnosis the biobank holds
+    no sample for — and each sample gets one or two Observations carrying the
+    diagnoses linked to that sample. The two never share a code for the same
+    donor, so a consumer that reads only one of the placements is visibly wrong
+    rather than accidentally right.
     """
     entries: list[dict] = []
 
@@ -773,7 +828,12 @@ def generate_bundle(
         donor, donor_id = make_donor(biobank_id)
         entries.append(bundle_entry(donor))
 
-        condition, _cid, _icd = make_condition(donor_id)
+        # Diagnoses this donor has samples for, and one they do not
+        sample_diagnoses = random.sample(ICD10_CODES, k=min(3, len(ICD10_CODES)))
+        remaining        = [d for d in ICD10_CODES if d not in sample_diagnoses]
+        condition_diagnosis = random.choice(remaining) if remaining else None
+
+        condition, _cid, _icd = make_condition(donor_id, condition_diagnosis)
         entries.append(bundle_entry(condition))
 
         n_samples = random.randint(1, max(1, max_samples_per_donor))
@@ -782,6 +842,11 @@ def generate_bundle(
             sample, sample_id = make_sample(donor_id, col_id_val)
             entries.append(bundle_entry(sample))
             specimen_registry[col_id_val].append(sample_id)
+
+            for diagnosis in random.sample(sample_diagnoses,
+                                           k=random.randint(1, min(2, len(sample_diagnoses)))):
+                observation, _obs_id = make_observation(donor_id, sample_id, diagnosis)
+                entries.append(bundle_entry(observation))
 
     # ── Collection Groups (one per CollectionOrg)
     for col_org_id, col_id_val in col_data:
@@ -814,7 +879,14 @@ def validate_bundle(bundle: dict) -> bool:
     assert "Patient"      in types
     assert "Specimen"     in types
     assert "Condition"    in types
+    assert "Observation"  in types
     assert "Group"        in types
+
+    for e in entries:
+        r = e["resource"]
+        if r["resourceType"] == "Observation":
+            assert r.get("specimen"), "Observation must be linked to a Specimen"
+            assert r["valueCodeableConcept"]["coding"][0]["system"] == ICD10
     print("  [ok] structural validation passed")
     return True
 
